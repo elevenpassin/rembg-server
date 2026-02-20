@@ -4,12 +4,12 @@
     "removeComments": true,
     "preserveConstEnums": true,
     "sourceMap": true,
-    "strict": true
+    "strict": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
   },
   "include": [
     "src/**/*.ts"
   ],
-  "extends": [
-    "@tsconfig/node-ts/tsconfig.json"
-  ]
+  "extends": "@tsconfig/node-ts/tsconfig.json"
 }
