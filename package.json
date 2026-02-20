@@ -13,13 +13,20 @@
   "license": "ISC",
   "packageManager": "pnpm@10.19.1-oidc-test.3",
   "devDependencies": {
+    "@biomejs/biome": "2.4.3",
     "@tsconfig/node-ts": "^23.6.4",
     "@types/node": "^25.3.0",
+    "@types/pg": "^8.16.0",
+    "prisma": "^7.4.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.4.1",
+    "@prisma/client": "^7.4.1",
     "@trpc/client": "^11.10.0",
-    "@trpc/server": "^11.10.0"
+    "@trpc/server": "^11.10.0",
+    "dotenv": "^17.3.1",
+    "pg": "^8.18.0"
   }
 }
