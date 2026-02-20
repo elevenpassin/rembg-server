@@ -1,15 +1,13 @@
 {
-  "compilerOptions": {
-    "noImplicitAny": true,
-    "removeComments": true,
-    "preserveConstEnums": true,
-    "sourceMap": true,
-    "strict": true,
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext"
-  },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "extends": "@tsconfig/node-ts/tsconfig.json"
+	"compilerOptions": {
+		"noImplicitAny": true,
+		"removeComments": true,
+		"preserveConstEnums": true,
+		"sourceMap": true,
+		"strict": true,
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext"
+	},
+	"include": ["src/**/*.ts"],
+	"extends": "@tsconfig/node-ts/tsconfig.json"
 }
