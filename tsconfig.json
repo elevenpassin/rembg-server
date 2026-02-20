@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "noImplicitAny": true,
+    "removeComments": true,
+    "preserveConstEnums": true,
+    "sourceMap": true,
+    "strict": true
+  },
+  "include": [
+    "index.ts"
+  ],
+  "extends": [
+    "@tsconfig/node-ts/tsconfig.json"
+  ]
+}
