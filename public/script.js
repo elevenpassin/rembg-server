@@ -44,7 +44,8 @@ if (uploadForm && imagesInput) {
     }
 
     try {
-      const res = await fetch('/upload', {
+      const uploadUrl = new URL('/upload', window.location.origin).href;
+      const res = await fetch(uploadUrl, {
         method: 'POST',
         body: formData,
       });

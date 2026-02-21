@@ -14,13 +14,16 @@ COPY prisma ./prisma
 
 RUN pnpm run prisma:generate
 
-# Prod (Fly Proxy + App): Node app + rembg HTTP server in one container
+
+FROM node:25-bookworm-slim AS runner-base
 # Use Debian slim (glibc) so pip gets prebuilt wheels for onnxruntime/opencv (Alpine/musl has none)
-FROM node:25-bookworm-slim AS runner-prod
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& pip3 install --break-system-packages "rembg[cpu,cli]"
 RUN npm install -g pnpm
+
+# Prod (Fly Proxy + App): Node app + rembg HTTP server in one container
+FROM runner-base AS runner-prod
 
 WORKDIR /app
 COPY --from=base /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./

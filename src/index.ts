@@ -216,12 +216,18 @@ function servePublic(req: http.IncomingMessage, res: http.ServerResponse): boole
 
 const server = http.createServer((req, res) => {
 	const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
-	if (req.method === "POST" && url.pathname === "/upload") {
+	const pathname = url.pathname.replace(/\/$/, "") || "/";
+	if (req.method === "POST" && pathname === "/upload") {
 		handleUpload(req, res);
 		return;
 	}
 	if (servePublic(req, res)) return;
-	trpcHandler(req, res);
+	if (pathname.startsWith("/trpc/")) {
+		trpcHandler(req, res);
+		return;
+	}
+	res.writeHead(404);
+	res.end();
 });
 
 server.listen(3000);

@@ -1,13 +1,11 @@
-:80 {
-	# tRPC API: strip /trpc prefix and proxy to app
+# http://localhost and https://localhost (Caddy uses its local CA for HTTPS; accept browser prompt once)
+http://localhost, https://localhost {
 	handle_path /trpc/* {
 		reverse_proxy app:3000
 	}
-	# Image upload endpoint
 	handle /upload {
 		reverse_proxy app:3000
 	}
-	# Static site (public/) from /srv
 	handle {
 		root * /srv
 		file_server

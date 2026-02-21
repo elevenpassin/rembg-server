@@ -2,12 +2,13 @@ services:
   proxy:
     image: caddy:latest
     restart: unless-stopped
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
     networks:
       - app_network
     ports:
-      - 80:80
-      - "443:443"
-      - "443:443/udp"
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:443:443/udp"
     volumes:
       - ./caddy/conf:/etc/caddy
       - ./public:/srv
