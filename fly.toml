@@ -26,22 +26,24 @@ primary_region = 'fra'
     hard_limit = 25
     soft_limit = 20
 
-  # Main server (Node) liveness
+  # Node only binds 3000 after waitForRembg() succeeds, so this check passes only when rembg is up too.
+  # Set grace_period longer than REMBG_WAIT_MS if rembg often needs >3min to load on this VM.
   [[http_service.checks]]
     interval = "15s"
     timeout = "5s"
-    grace_period = "30s"
+    grace_period = "180s"
     method = "GET"
     path = "/health"
 
-# rembg server (same machine, port 7000) – Fly checks it directly via TCP
+# Rembg HTTP server (same machine as app). TCP check confirms port 7000 is listening.
+# Traffic is only routed to 3000; this check is for visibility / optional TCP routing.
 [[services]]
   internal_port = 7000
   protocol = "tcp"
   processes = ["app"]
 
   [[services.tcp_checks]]
-    grace_period = "60s"
+    grace_period = "180s"
     interval = "15s"
     timeout = "5s"
 

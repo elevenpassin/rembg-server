@@ -244,52 +244,26 @@ const server = http.createServer((req, res) => {
 	res.end();
 });
 
-// Allow time for rembg to start (e.g. first-run model download)
-const REMBG_WAIT_MS = 180_000;
-const REMBG_POLL_MS = 500;
+const CONNECT_TIMEOUT_MS = 5_000; // for /health/rembg so we don't hang
 
 function connectOnce(host: string, port: number): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const socket = net.createConnection({ host, port }, () => {
-			socket.destroy();
-			resolve();
-		});
+		const socket = net.createConnection(
+			{ host, port, timeout: CONNECT_TIMEOUT_MS },
+			() => {
+				socket.destroy();
+				resolve();
+			},
+		);
 		socket.on("error", (err) => {
 			socket.destroy();
 			reject(err);
 		});
+		socket.on("timeout", () => {
+			socket.destroy();
+			reject(new Error("Connection timeout"));
+		});
 	});
 }
 
-async function waitForRembg(): Promise<void> {
-	const url = new URL(REMBG_URL);
-	const host = url.hostname;
-	const port = Number(url.port) || 7000;
-	const deadline = Date.now() + REMBG_WAIT_MS;
-
-	console.log(`Waiting for rembg at ${REMBG_URL} (up to ${REMBG_WAIT_MS / 1000}s)...`);
-	for (;;) {
-		try {
-			await connectOnce(host, port);
-			console.log("rembg is ready");
-			return;
-		} catch {
-			if (Date.now() >= deadline) {
-				throw new Error(`rembg at ${REMBG_URL} not ready after ${REMBG_WAIT_MS}ms`);
-			}
-			await new Promise((r) => setTimeout(r, REMBG_POLL_MS));
-		}
-	}
-}
-
-async function start(): Promise<void> {
-	await waitForRembg();
-	server.listen(3000);
-}
-
-try {
-	await start();
-} catch (err) {
-	console.error(err);
-	process.exit(1);
-}
+server.listen(3000, "0.0.0.0");

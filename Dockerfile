@@ -20,6 +20,8 @@ FROM node:25-bookworm-slim AS runner-base
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& pip3 install --break-system-packages "rembg[cpu,cli]"
+# Pre-download default model so containers start fast (no download on first run)
+RUN rembg d
 RUN npm install -g pnpm
 
 # Prod (Fly Proxy + App): Node app + rembg HTTP server in one container
