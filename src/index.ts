@@ -222,6 +222,10 @@ const server = http.createServer((req, res) => {
 		handleUpload(req, res);
 		return;
 	}
+	if (req.method === "GET" && pathname === "/health") {
+		sendJson(res, 200, { status: "ok" });
+		return;
+	}
 	if (servePublic(req, res)) return;
 	if (pathname.startsWith("/trpc/")) {
 		trpcHandler(req, res);
@@ -231,7 +235,8 @@ const server = http.createServer((req, res) => {
 	res.end();
 });
 
-const REMBG_WAIT_MS = 60_000;
+// Allow time for rembg to start (e.g. first-run model download)
+const REMBG_WAIT_MS = 180_000;
 const REMBG_POLL_MS = 500;
 
 function connectOnce(host: string, port: number): Promise<void> {
@@ -253,9 +258,11 @@ async function waitForRembg(): Promise<void> {
 	const port = Number(url.port) || 7000;
 	const deadline = Date.now() + REMBG_WAIT_MS;
 
+	console.log(`Waiting for rembg at ${REMBG_URL} (up to ${REMBG_WAIT_MS / 1000}s)...`);
 	for (;;) {
 		try {
 			await connectOnce(host, port);
+			console.log("rembg is ready");
 			return;
 		} catch {
 			if (Date.now() >= deadline) {

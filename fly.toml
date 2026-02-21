@@ -26,6 +26,13 @@ primary_region = 'fra'
     hard_limit = 25
     soft_limit = 20
 
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/health"
+
 # rembg + Node in one machine; 1GB recommended for rembg model loading
 [[vm]]
   memory = '1gb'

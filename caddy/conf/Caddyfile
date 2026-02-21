@@ -6,6 +6,9 @@ http://localhost, https://localhost {
 	handle /upload {
 		reverse_proxy app:3000
 	}
+	handle /health {
+		reverse_proxy app:3000
+	}
 	handle {
 		root * /srv
 		file_server
