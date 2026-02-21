@@ -33,7 +33,7 @@ COPY --from=base /app/prisma ./prisma
 COPY public ./public
 
 ENV REMBG_URL=http://localhost:7000
-EXPOSE 3000
+EXPOSE 3000 7000
 CMD ["sh", "-c", "rembg s --host 0.0.0.0 --port 7000 & exec pnpm run serve"]
 
 # Local (Caddy + App)

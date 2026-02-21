@@ -22,6 +22,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runner
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REMBG_URL=http://rembg:7000
@@ -29,19 +30,26 @@ services:
     ports:
       - 3000:3000
     depends_on:
-      - rembg
+      rembg:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 120s
   rembg:
     image: danielgatis/rembg:latest
     command: ["s"]
     networks:
       - app_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 7000), timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
 networks:
   app_network:

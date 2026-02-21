@@ -226,6 +226,15 @@ const server = http.createServer((req, res) => {
 		sendJson(res, 200, { status: "ok" });
 		return;
 	}
+	if (req.method === "GET" && pathname === "/health/rembg") {
+		const rembgUrl = new URL(REMBG_URL);
+		const host = rembgUrl.hostname;
+		const port = Number(rembgUrl.port) || 7000;
+		connectOnce(host, port)
+			.then(() => sendJson(res, 200, { status: "ok" }))
+			.catch(() => sendJson(res, 503, { status: "unavailable", service: "rembg" }));
+		return;
+	}
 	if (servePublic(req, res)) return;
 	if (pathname.startsWith("/trpc/")) {
 		trpcHandler(req, res);

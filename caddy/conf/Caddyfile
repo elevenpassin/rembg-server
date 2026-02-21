@@ -9,6 +9,9 @@ http://localhost, https://localhost {
 	handle /health {
 		reverse_proxy app:3000
 	}
+	handle /health/rembg {
+		reverse_proxy app:3000
+	}
 	handle {
 		root * /srv
 		file_server
