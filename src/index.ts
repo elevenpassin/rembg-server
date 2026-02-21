@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import net from "node:net";
 import z from "zod";
 import busboy from "busboy";
 import { db } from "./db.ts";
@@ -230,4 +231,49 @@ const server = http.createServer((req, res) => {
 	res.end();
 });
 
-server.listen(3000);
+const REMBG_WAIT_MS = 60_000;
+const REMBG_POLL_MS = 500;
+
+function connectOnce(host: string, port: number): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const socket = net.createConnection({ host, port }, () => {
+			socket.destroy();
+			resolve();
+		});
+		socket.on("error", (err) => {
+			socket.destroy();
+			reject(err);
+		});
+	});
+}
+
+async function waitForRembg(): Promise<void> {
+	const url = new URL(REMBG_URL);
+	const host = url.hostname;
+	const port = Number(url.port) || 7000;
+	const deadline = Date.now() + REMBG_WAIT_MS;
+
+	for (;;) {
+		try {
+			await connectOnce(host, port);
+			return;
+		} catch {
+			if (Date.now() >= deadline) {
+				throw new Error(`rembg at ${REMBG_URL} not ready after ${REMBG_WAIT_MS}ms`);
+			}
+			await new Promise((r) => setTimeout(r, REMBG_POLL_MS));
+		}
+	}
+}
+
+async function start(): Promise<void> {
+	await waitForRembg();
+	server.listen(3000);
+}
+
+try {
+	await start();
+} catch (err) {
+	console.error(err);
+	process.exit(1);
+}
