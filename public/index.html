@@ -10,6 +10,14 @@
 
   <p>This page is used to test the server load of the Rembg server.</p>
 
+  <form id="upload-form">
+    <label for="images">Upload images (max 7)</label>
+    <input type="file" id="images" name="images" accept="image/*" multiple>
+    <button type="submit">Remove backgrounds</button>
+    <p id="upload-hint" class="hint"></p>
+  </form>
+  <div id="upload-results"></div>
+
   <form id="users-form">
     <button type="submit">Get users</button>
   </form>

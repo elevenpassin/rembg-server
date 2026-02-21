@@ -23,9 +23,18 @@ services:
       dockerfile: Dockerfile
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - REMBG_URL=http://rembg:7000
     restart: unless-stopped
     ports:
       - 3000:3000
+    depends_on:
+      - rembg
+  rembg:
+    image: danielgatis/rembg:latest
+    command: ["s"]
+    networks:
+      - app_network
+    restart: unless-stopped
 
 networks:
   app_network:
