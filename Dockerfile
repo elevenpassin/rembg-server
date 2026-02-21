@@ -14,14 +14,21 @@ COPY prisma ./prisma
 
 RUN pnpm run prisma:generate
 
-FROM base AS runner
-
+# Prod (Fly Proxy + App)
+FROM base AS runner-prod
 WORKDIR /app
-
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/src ./src
 COPY --from=base /app/prisma ./prisma
-
+COPY public ./public
 EXPOSE 3000
+CMD ["pnpm", "run", "serve"]
 
+# Local (Caddy + App)
+FROM base AS runner
+WORKDIR /app
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/src ./src
+COPY --from=base /app/prisma ./prisma
+EXPOSE 3000
 CMD ["pnpm", "run", "serve"]
