@@ -1,0 +1,35 @@
+services:
+  proxy:
+    image: caddy:latest
+    restart: unless-stopped
+    networks:
+      - app_network
+    ports:
+      - 80:80
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/conf:/etc/caddy
+      - ./public:/srv
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+  app:
+    networks:
+      - app_network
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    ports:
+      - 3000:3000
+
+networks:
+  app_network:
+    driver: bridge
+volumes:
+  caddy_data:
+  caddy_config:

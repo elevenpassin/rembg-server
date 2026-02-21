@@ -1,0 +1,11 @@
+:80 {
+	# tRPC API: strip /trpc prefix and proxy to app
+	handle_path /trpc/* {
+		reverse_proxy app:3000
+	}
+	# Static site (public/) from /srv
+	handle {
+		root * /srv
+		file_server
+	}
+}
