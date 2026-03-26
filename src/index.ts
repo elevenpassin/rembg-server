@@ -17,6 +17,7 @@ const REMBG_URL = process.env.REMBG_URL ?? "http://localhost:7000";
 const BOOTSTRAP_REMBG = process.env.BOOTSTRAP_REMBG === "1";
 const BOOTSTRAP_REMBG_MODEL = process.env.REMBG_MODEL ?? "u2net";
 const BOOTSTRAP_REMBG_WAIT_MS = Number.parseInt(process.env.REMBG_BOOTSTRAP_WAIT_MS ?? "", 10) || 120_000;
+const BOOTSTRAP_REQUEST_WAIT_MS = Number.parseInt(process.env.REMBG_REQUEST_WAIT_MS ?? "", 10) || 120_000;
 const DEFAULT_PORT = 3000;
 const PORT = Number.parseInt(process.env.PORT ?? "", 10) || DEFAULT_PORT;
 
@@ -108,6 +109,8 @@ async function maybeBootstrapRembg(): Promise<void> {
 	console.log(`[startup] rembg is reachable at ${host}:${port}`);
 }
 
+let rembgReadyPromise: Promise<void> | null = null;
+
 async function removeBackground(
 	buffer: Buffer,
 	filename: string,
@@ -179,6 +182,22 @@ function handleUpload(req: express.Request, res: express.Response): void {
 		}
 		if (files.length === 0) {
 			sendJson(res, 400, { error: "No image files uploaded" });
+			return;
+		}
+
+		// Avoid streaming an "empty" multipart response when rembg isn't ready.
+		const { host, port } = parseRembgHostPort(REMBG_URL);
+		if (BOOTSTRAP_REMBG && rembgReadyPromise) {
+			// If we're currently bootstrapping rembg, wait up to a bounded amount.
+			await Promise.race([
+				rembgReadyPromise,
+				delay(BOOTSTRAP_REQUEST_WAIT_MS).then(() => undefined),
+			]).catch(() => undefined);
+		}
+		try {
+			await connectOnce(host, port);
+		} catch {
+			sendJson(res, 503, { error: "rembg unavailable" });
 			return;
 		}
 
@@ -287,11 +306,14 @@ const isMainModule =
 	path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMainModule) {
-	(async () => {
-		await maybeBootstrapRembg();
-		app.listen(PORT, "0.0.0.0");
-	})().catch((err) => {
-		console.error("[startup] failed to start app", err);
-		process.exit(1);
-	});
+	// Start the HTTP server immediately so Fly health checks pass.
+	app.listen(PORT, "0.0.0.0");
+
+	// Bootstrapping rembg is best-effort and runs in the background.
+	if (BOOTSTRAP_REMBG) {
+		rembgReadyPromise = maybeBootstrapRembg();
+		rembgReadyPromise.catch((err) => {
+			console.error("[startup] rembg bootstrap failed", err);
+		});
+	}
 }
