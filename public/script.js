@@ -58,14 +58,18 @@ if (uploadForm && imagesInput) {
         return;
       }
 
-      if (!contentType.startsWith('multipart/mixed')) {
+      if (!contentType.toLowerCase().startsWith('multipart/mixed')) {
         uploadHint.textContent = 'Unexpected response from server.';
         uploadHint.style.color = '#c00';
         return;
       }
 
-      const boundaryMatch = contentType.match(/boundary=([^;\s]+)/);
-      const boundary = boundaryMatch ? boundaryMatch[1].trim() : null;
+      const boundaryMatch = contentType.match(/boundary=([^;\s]+)/i);
+      let boundary = boundaryMatch ? boundaryMatch[1].trim() : null;
+      // Some proxies/frameworks may quote the boundary parameter.
+      if (boundary && boundary.startsWith('"') && boundary.endsWith('"')) {
+        boundary = boundary.slice(1, -1);
+      }
       if (!boundary) {
         uploadHint.textContent = 'Invalid multipart response.';
         uploadHint.style.color = '#c00';
@@ -114,9 +118,14 @@ if (uploadForm && imagesInput) {
   function parseMultipartMixed(arrayBuffer, boundary) {
     const parts = [];
     const bytes = new Uint8Array(arrayBuffer);
-    const boundaryBytes = new TextEncoder().encode('\r\n--' + boundary);
-    const endBoundaryBytes = new TextEncoder().encode('\r\n--' + boundary + '--');
-    const doubleCrlf = new TextEncoder().encode('\r\n\r\n');
+    const encoder = new TextEncoder();
+    // Be tolerant to either CRLF or LF line endings.
+    const boundaryBytesCRLF = encoder.encode('\r\n--' + boundary);
+    const boundaryBytesLF = encoder.encode('\n--' + boundary);
+    const endBoundaryBytesCRLF = encoder.encode('\r\n--' + boundary + '--');
+    const endBoundaryBytesLF = encoder.encode('\n--' + boundary + '--');
+    const doubleCrlfCRLF = encoder.encode('\r\n\r\n');
+    const doubleCrlfLF = encoder.encode('\n\n');
 
     function indexOf(haystack, needle, start) {
       const n = needle.length;
@@ -135,29 +144,47 @@ if (uploadForm && imagesInput) {
     }
 
     let pos = 0;
-    const startBoundary = new TextEncoder().encode('--' + boundary + '\r\n');
-    const first = indexOf(bytes, startBoundary, 0);
-    if (first === -1) return parts;
-    pos = first + startBoundary.length;
+    const startBoundaryCRLF = encoder.encode('--' + boundary + '\r\n');
+    const startBoundaryLF = encoder.encode('--' + boundary + '\n');
+    const firstCRLF = indexOf(bytes, startBoundaryCRLF, 0);
+    const firstLF = indexOf(bytes, startBoundaryLF, 0);
+    if (firstCRLF === -1 && firstLF === -1) return parts;
+    const first = firstCRLF === -1 ? firstLF : (firstLF === -1 ? firstCRLF : Math.min(firstCRLF, firstLF));
+    pos = first + (first === firstCRLF ? startBoundaryCRLF.length : startBoundaryLF.length);
 
     while (pos < bytes.length) {
-      const nextBound = indexOf(bytes, boundaryBytes, pos);
-      const endBound = indexOf(bytes, endBoundaryBytes, pos);
-      const partEnd = nextBound === -1 ? endBound : (endBound === -1 ? nextBound : Math.min(nextBound, endBound));
+      const nextBoundCRLF = indexOf(bytes, boundaryBytesCRLF, pos);
+      const nextBoundLF = indexOf(bytes, boundaryBytesLF, pos);
+      const nextBound = nextBoundCRLF === -1 ? nextBoundLF : (nextBoundLF === -1 ? nextBoundCRLF : Math.min(nextBoundCRLF, nextBoundLF));
+
+      const endBoundCRLF = indexOf(bytes, endBoundaryBytesCRLF, pos);
+      const endBoundLF = indexOf(bytes, endBoundaryBytesLF, pos);
+      const endBound = endBoundCRLF === -1 ? endBoundLF : (endBoundLF === -1 ? endBoundCRLF : Math.min(endBoundCRLF, endBoundLF));
+
+      const partEnd = nextBound === -1
+        ? endBound
+        : (endBound === -1 ? nextBound : Math.min(nextBound, endBound));
       if (partEnd === -1) break;
 
       const headerBlock = bytes.subarray(pos, partEnd);
-      const crlfIdx = indexOf(headerBlock, doubleCrlf, 0);
+      const crlfIdxCRLF = indexOf(headerBlock, doubleCrlfCRLF, 0);
+      const crlfIdxLF = crlfIdxCRLF === -1 ? indexOf(headerBlock, doubleCrlfLF, 0) : -1;
+      const crlfIdx = crlfIdxCRLF !== -1 ? crlfIdxCRLF : crlfIdxLF;
+      const headerSepLen = crlfIdxCRLF !== -1 ? doubleCrlfCRLF.length : doubleCrlfLF.length;
       if (crlfIdx === -1) {
-        pos = partEnd + boundaryBytes.length;
+        // Move forward to avoid getting stuck if we can't find the header/body separator.
+        pos = partEnd + (nextBoundCRLF !== -1 ? boundaryBytesCRLF.length : (nextBoundLF !== -1 ? boundaryBytesLF.length : 0));
         continue;
       }
       const headerBytes = headerBlock.subarray(0, crlfIdx);
-      const bodyStart = pos + crlfIdx + doubleCrlf.length;
+      const bodyStart = pos + crlfIdx + headerSepLen;
       const bodyEnd = partEnd;
       let body = bytes.subarray(bodyStart, bodyEnd);
+      // Best-effort trim of trailing line breaks.
       if (body.length >= 2 && body[body.length - 2] === 0x0d && body[body.length - 1] === 0x0a) {
         body = body.subarray(0, body.length - 2);
+      } else if (body.length >= 1 && body[body.length - 1] === 0x0a) {
+        body = body.subarray(0, body.length - 1);
       }
 
       const headerText = new TextDecoder().decode(headerBytes);
@@ -170,7 +197,14 @@ if (uploadForm && imagesInput) {
       });
 
       if (endBound !== -1 && partEnd === endBound) break;
-      pos = partEnd + boundaryBytes.length;
+      // Jump past the boundary start bytes we matched.
+      if (partEnd === nextBoundCRLF) pos = partEnd + boundaryBytesCRLF.length;
+      else if (partEnd === nextBoundLF) pos = partEnd + boundaryBytesLF.length;
+      else pos = partEnd + (nextBoundCRLF !== -1 ? boundaryBytesCRLF.length : boundaryBytesLF.length);
+
+      // Skip the line break after the boundary token (if present).
+      if (bytes[pos] === 0x0d && bytes[pos + 1] === 0x0a) pos += 2;
+      else if (bytes[pos] === 0x0a) pos += 1;
     }
     return parts;
   }
