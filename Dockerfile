@@ -1,4 +1,4 @@
-FROM node:25-alpine AS base
+FROM node:22-alpine AS base
 RUN apk add --no-cache bash wget
 
 WORKDIR /app
@@ -15,13 +15,11 @@ COPY prisma ./prisma
 RUN pnpm run prisma:generate
 
 
-FROM node:25-bookworm-slim AS runner-base
+FROM node:22-bookworm-slim AS runner-base
 # Use Debian slim (glibc) so pip gets prebuilt wheels for onnxruntime/opencv (Alpine/musl has none)
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip \
 	&& rm -rf /var/lib/apt/lists/* \
-	&& pip3 install --break-system-packages "rembg[cpu,cli]"
-# Pre-download default model so containers start fast (no download on first run)
-RUN rembg d
+	&& pip3 install --no-cache-dir --break-system-packages "rembg[cpu,cli]"
 RUN npm install -g pnpm
 
 # Prod (Fly Proxy + App): Node app + rembg HTTP server in one container
@@ -36,7 +34,7 @@ COPY public ./public
 
 ENV REMBG_URL=http://localhost:7000
 EXPOSE 3000 7000
-CMD ["sh", "-c", "rembg s --host 0.0.0.0 --port 7000 & exec pnpm run serve"]
+CMD ["sh", "-c", "rembg d u2net && rembg s --host 0.0.0.0 --port 7000 & exec pnpm run serve"]
 
 # Local (Caddy + App)
 FROM base AS runner

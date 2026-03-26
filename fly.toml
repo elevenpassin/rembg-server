@@ -1,4 +1,4 @@
-# fly.toml app configuration file generated for rembg-server on 2026-02-21T17:50:01+01:00
+# fly.toml app configuration file generated for rembg-server on 2026-03-26T20:11:29+01:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
@@ -12,6 +12,7 @@ primary_region = 'fra'
 
 [env]
   REMBG_URL = 'http://localhost:7000'
+  U2NET_HOME = '/data/rembg'
 
 [http_service]
   internal_port = 3000
@@ -26,30 +27,19 @@ primary_region = 'fra'
     hard_limit = 25
     soft_limit = 20
 
-  # Node only binds 3000 after waitForRembg() succeeds, so this check passes only when rembg is up too.
-  # Set grace_period longer than REMBG_WAIT_MS if rembg often needs >3min to load on this VM.
   [[http_service.checks]]
-    interval = "15s"
-    timeout = "5s"
-    grace_period = "180s"
-    method = "GET"
-    path = "/health"
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '3m0s'
+    method = 'GET'
+    path = '/health'
 
-# Rembg HTTP server (same machine as app). TCP check confirms port 7000 is listening.
-# Traffic is only routed to 3000; this check is for visibility / optional TCP routing.
-[[services]]
-  internal_port = 7000
-  protocol = "tcp"
-  processes = ["app"]
-
-  [[services.tcp_checks]]
-    grace_period = "180s"
-    interval = "15s"
-    timeout = "5s"
-
-# rembg + Node in one machine; 1GB recommended for rembg model loading
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
   memory_mb = 1024
+
+[[mounts]]
+  source = 'rembg_data'
+  destination = '/data'
