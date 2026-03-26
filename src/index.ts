@@ -13,6 +13,8 @@ import { connectOnce } from "./utils/network.ts";
 const MAX_UPLOAD_IMAGES = 7;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 const REMBG_URL = process.env.REMBG_URL ?? "http://localhost:7000";
+const DEFAULT_PORT = 3000;
+const PORT = Number.parseInt(process.env.PORT ?? "", 10) || DEFAULT_PORT;
 
 const ALLOWED_IMAGE_MIMES = new Set([
 	"image/jpeg",
@@ -203,5 +205,5 @@ const isMainModule =
 	path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMainModule) {
-	app.listen(3000, "0.0.0.0");
+	app.listen(PORT, "0.0.0.0");
 }
