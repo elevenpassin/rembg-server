@@ -1,4 +1,3 @@
-import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -7,6 +6,9 @@ import express from "express";
 import z from "zod";
 import { db } from "./db.ts";
 import { publicProcedure, router } from "./trpc.ts";
+import { outputFilename } from "./utils/files.ts";
+import { sendJson } from "./utils/http.ts";
+import { connectOnce } from "./utils/network.ts";
 
 const MAX_UPLOAD_IMAGES = 7;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
@@ -21,17 +23,6 @@ const ALLOWED_IMAGE_MIMES = new Set([
 	"image/x-icon",
 	"image/bmp",
 ]);
-
-function sendJson(res: express.Response, status: number, data: object) {
-	res.setHeader("Content-Type", "application/json");
-	res.writeHead(status);
-	res.end(JSON.stringify(data));
-}
-
-export function outputFilename(name: string): string {
-	const base = path.basename(name, path.extname(name));
-	return `${base}-nobg.png`;
-}
 
 async function removeBackground(
 	buffer: Buffer,
@@ -206,28 +197,6 @@ export function createApp(): express.Express {
 }
 
 export const app = createApp();
-
-const CONNECT_TIMEOUT_MS = 5_000; // for /health/rembg so we don't hang
-
-function connectOnce(host: string, port: number): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const socket = net.createConnection(
-			{ host, port, timeout: CONNECT_TIMEOUT_MS },
-			() => {
-				socket.destroy();
-				resolve();
-			},
-		);
-		socket.on("error", (err) => {
-			socket.destroy();
-			reject(err);
-		});
-		socket.on("timeout", () => {
-			socket.destroy();
-			reject(new Error("Connection timeout"));
-		});
-	});
-}
 
 const isMainModule =
 	process.argv[1] !== undefined &&
