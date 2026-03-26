@@ -1,5 +1,6 @@
 import net from "node:net";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import busboy from "busboy";
 import express from "express";
@@ -27,7 +28,7 @@ function sendJson(res: express.Response, status: number, data: object) {
 	res.end(JSON.stringify(data));
 }
 
-function outputFilename(name: string): string {
+export function outputFilename(name: string): string {
 	const base = path.basename(name, path.extname(name));
 	return `${base}-nobg.png`;
 }
@@ -167,40 +168,44 @@ const appRouter = router({
 
 export type AppRouter = typeof appRouter;
 
-const app = express();
+export function createApp(): express.Express {
+	const app = express();
 
-app.post("/upload", (req, res) => {
-	handleUpload(req, res);
-});
+	app.post("/upload", handleUpload);
 
-app.get("/health", (_req, res) => {
-	sendJson(res, 200, { status: "ok" });
-});
-
-app.get("/health/rembg", async (_req, res) => {
-	const rembgUrl = new URL(REMBG_URL);
-	const host = rembgUrl.hostname;
-	const port = Number(rembgUrl.port) || 7000;
-	try {
-		await connectOnce(host, port);
+	app.get("/health", (_req, res) => {
 		sendJson(res, 200, { status: "ok" });
-	} catch {
-		sendJson(res, 503, { status: "unavailable", service: "rembg" });
-	}
-});
+	});
 
-app.use(
-	"/trpc",
-	createExpressMiddleware({
-		router: appRouter,
-	}),
-);
+	app.get("/health/rembg", async (_req, res) => {
+		const rembgUrl = new URL(REMBG_URL);
+		const host = rembgUrl.hostname;
+		const port = Number(rembgUrl.port) || 7000;
+		try {
+			await connectOnce(host, port);
+			sendJson(res, 200, { status: "ok" });
+		} catch {
+			sendJson(res, 503, { status: "unavailable", service: "rembg" });
+		}
+	});
 
-app.use(express.static(path.join(process.cwd(), "public")));
+	app.use(
+		"/trpc",
+		createExpressMiddleware({
+			router: appRouter,
+		}),
+	);
 
-app.use((_req, res) => {
-	res.sendStatus(404);
-});
+	app.use(express.static(path.join(process.cwd(), "public")));
+
+	app.use((_req, res) => {
+		res.sendStatus(404);
+	});
+
+	return app;
+}
+
+export const app = createApp();
 
 const CONNECT_TIMEOUT_MS = 5_000; // for /health/rembg so we don't hang
 
@@ -224,4 +229,10 @@ function connectOnce(host: string, port: number): Promise<void> {
 	});
 }
 
-app.listen(3000, "0.0.0.0");
+const isMainModule =
+	process.argv[1] !== undefined &&
+	path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMainModule) {
+	app.listen(3000, "0.0.0.0");
+}
