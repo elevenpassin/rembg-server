@@ -1,12 +1,11 @@
-import fs from "node:fs";
-import path from "node:path";
-import http from "node:http";
 import net from "node:net";
-import z from "zod";
+import path from "node:path";
+import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import busboy from "busboy";
+import express from "express";
+import z from "zod";
 import { db } from "./db.ts";
 import { publicProcedure, router } from "./trpc.ts";
-import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 
 const MAX_UPLOAD_IMAGES = 7;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
@@ -22,7 +21,7 @@ const ALLOWED_IMAGE_MIMES = new Set([
 	"image/bmp",
 ]);
 
-function sendJson(res: http.ServerResponse, status: number, data: object) {
+function sendJson(res: express.Response, status: number, data: object) {
 	res.setHeader("Content-Type", "application/json");
 	res.writeHead(status);
 	res.end(JSON.stringify(data));
@@ -33,7 +32,10 @@ function outputFilename(name: string): string {
 	return `${base}-nobg.png`;
 }
 
-async function removeBackground(buffer: Buffer, filename: string): Promise<Buffer> {
+async function removeBackground(
+	buffer: Buffer,
+	filename: string,
+): Promise<Buffer> {
 	const form = new FormData();
 	form.append("file", new Blob([new Uint8Array(buffer)]), filename);
 	const res = await fetch(`${REMBG_URL}/api/remove`, {
@@ -48,13 +50,7 @@ async function removeBackground(buffer: Buffer, filename: string): Promise<Buffe
 	return Buffer.from(arrayBuffer);
 }
 
-function handleUpload(
-	req: http.IncomingMessage,
-	res: http.ServerResponse,
-): void {
-	const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
-	if (req.method !== "POST" || url.pathname !== "/upload") return;
-
+function handleUpload(req: express.Request, res: express.Response): void {
 	const contentType = req.headers["content-type"];
 	if (!contentType?.startsWith("multipart/form-data")) {
 		sendJson(res, 400, { error: "Content-Type must be multipart/form-data" });
@@ -66,7 +62,7 @@ function handleUpload(
 
 	const bb = busboy({ headers: req.headers });
 
-	bb.on("file", (name, file, info) => {
+	bb.on("file", (_name, file, info) => {
 		const { filename, mimeType } = info;
 		const chunks: Buffer[] = [];
 		let size = 0;
@@ -84,7 +80,9 @@ function handleUpload(
 				error ??= `Maximum ${MAX_UPLOAD_IMAGES} images allowed`;
 				return;
 			}
-			const mime = (mimeType || "application/octet-stream").split(";")[0].trim();
+			const mime = (mimeType || "application/octet-stream")
+				.split(";")[0]
+				.trim();
 			if (!ALLOWED_IMAGE_MIMES.has(mime)) {
 				error ??= `Invalid file type: ${mime}. Allowed: images only`;
 				return;
@@ -169,79 +167,39 @@ const appRouter = router({
 
 export type AppRouter = typeof appRouter;
 
-const trpcHandler = createHTTPHandler({
-	router: appRouter,
-	basePath: "/trpc/",
+const app = express();
+
+app.post("/upload", (req, res) => {
+	handleUpload(req, res);
 });
 
-const PUBLIC_DIR = path.join(process.cwd(), "public");
-const MIME: Record<string, string> = {
-	".html": "text/html",
-	".js": "application/javascript",
-	".css": "text/css",
-	".ico": "image/x-icon",
-	".svg": "image/svg+xml",
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".webp": "image/webp",
-};
+app.get("/health", (_req, res) => {
+	sendJson(res, 200, { status: "ok" });
+});
 
-function servePublic(req: http.IncomingMessage, res: http.ServerResponse): boolean {
-	if (req.method !== "GET" && req.method !== "HEAD") return false;
-	const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
-	let p = url.pathname;
-	if (p === "/") p = "/index.html";
-	const safePath = path.normalize(p).replace(/^\//, "");
-	if (safePath.includes("..")) return false;
-	const filePath = path.resolve(PUBLIC_DIR, safePath);
-	const root = path.resolve(PUBLIC_DIR);
-	if (filePath !== root && !filePath.startsWith(root + path.sep)) return false;
+app.get("/health/rembg", async (_req, res) => {
+	const rembgUrl = new URL(REMBG_URL);
+	const host = rembgUrl.hostname;
+	const port = Number(rembgUrl.port) || 7000;
 	try {
-		const stat = fs.statSync(filePath);
-		if (!stat.isFile()) return false;
-		const ext = path.extname(filePath);
-		const contentType = MIME[ext] ?? "application/octet-stream";
-		res.setHeader("Content-Type", contentType);
-		res.setHeader("Content-Length", String(stat.size));
-		if (req.method === "HEAD") {
-			res.writeHead(200);
-			res.end();
-			return true;
-		}
-		fs.createReadStream(filePath).pipe(res);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-const server = http.createServer((req, res) => {
-	const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
-	const pathname = url.pathname.replace(/\/$/, "") || "/";
-	if (req.method === "POST" && pathname === "/upload") {
-		handleUpload(req, res);
-		return;
-	}
-	if (req.method === "GET" && pathname === "/health") {
+		await connectOnce(host, port);
 		sendJson(res, 200, { status: "ok" });
-		return;
+	} catch {
+		sendJson(res, 503, { status: "unavailable", service: "rembg" });
 	}
-	if (req.method === "GET" && pathname === "/health/rembg") {
-		const rembgUrl = new URL(REMBG_URL);
-		const host = rembgUrl.hostname;
-		const port = Number(rembgUrl.port) || 7000;
-		connectOnce(host, port)
-			.then(() => sendJson(res, 200, { status: "ok" }))
-			.catch(() => sendJson(res, 503, { status: "unavailable", service: "rembg" }));
-		return;
-	}
-	if (servePublic(req, res)) return;
-	if (pathname.startsWith("/trpc/")) {
-		trpcHandler(req, res);
-		return;
-	}
-	res.writeHead(404);
-	res.end();
+});
+
+app.use(
+	"/trpc",
+	createExpressMiddleware({
+		router: appRouter,
+	}),
+);
+
+app.use(express.static(path.join(process.cwd(), "public")));
+
+app.use((_req, res) => {
+	res.sendStatus(404);
 });
 
 const CONNECT_TIMEOUT_MS = 5_000; // for /health/rembg so we don't hang
@@ -266,4 +224,4 @@ function connectOnce(host: string, port: number): Promise<void> {
 	});
 }
 
-server.listen(3000, "0.0.0.0");
+app.listen(3000, "0.0.0.0");

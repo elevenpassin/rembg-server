@@ -19,5 +19,5 @@ declare module "busboy" {
 	}
 
 	function busboy(config: BusboyConfig): Busboy;
-	export = busboy;
+	export default busboy;
 }
