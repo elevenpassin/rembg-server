@@ -306,14 +306,19 @@ const isMainModule =
 	path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMainModule) {
-	// Start the HTTP server immediately so Fly health checks pass.
-	app.listen(PORT, "0.0.0.0");
+	(async () => {
+		// Per requirement: only start Express after rembg is actually reachable.
+		if (BOOTSTRAP_REMBG) {
+			rembgReadyPromise = maybeBootstrapRembg();
+			await rembgReadyPromise;
+		} else {
+			const { host, port } = parseRembgHostPort(REMBG_URL);
+			await waitForRembg(host, port);
+		}
 
-	// Bootstrapping rembg is best-effort and runs in the background.
-	if (BOOTSTRAP_REMBG) {
-		rembgReadyPromise = maybeBootstrapRembg();
-		rembgReadyPromise.catch((err) => {
-			console.error("[startup] rembg bootstrap failed", err);
-		});
-	}
+		app.listen(PORT, "0.0.0.0");
+	})().catch((err) => {
+		console.error("[startup] failed to start app (rembg not ready)", err);
+		process.exit(1);
+	});
 }
