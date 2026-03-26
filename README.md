@@ -207,7 +207,8 @@ Compose-specific behavior:
 
 - `runner-prod` (Fly target)
   - Debian slim + Python + `rembg[cpu,cli]`
-  - pre-downloads rembg model (`rembg d`)
+  - downloads required rembg model(s) at container startup (e.g. `rembg d u2net`)
+  - downloads go into `U2NET_HOME` (configured in `fly.toml`)
   - starts both:
     - `rembg s --host 0.0.0.0 --port 7000`
     - Node app (`pnpm run serve`)
@@ -219,8 +220,18 @@ Compose-specific behavior:
 - Docker build target: `runner-prod`
 - app port: `3000`
 - `REMBG_URL=http://localhost:7000`
+- `U2NET_HOME=/data/rembg`
 - request concurrency limits: soft `20`, hard `25`
 - VM memory: `1gb` / `1024 MB`
+
+Rembg model volume:
+- `rembg_data` volume is mounted at `/data`
+- this keeps `U2NET_HOME` persistent across machine restarts/replacements
+- initial startup may still take longer until the model file is present
+- run the following once (adjust region/app name if needed):
+  ```bash
+  fly volumes create rembg_data --region fra --size 1 -a rembg-server --yes
+  ```
 
 Health checks configured:
 - HTTP check on `/health`
@@ -255,7 +266,9 @@ curl -s https://<your-app>.fly.dev/health/rembg
 ## Operational Notes
 
 - Uploads are buffered in memory before rembg calls; memory usage scales with file size and concurrency.
-- rembg model warm-up can be slow on cold boot; container and Fly checks are configured with startup grace periods.
+- rembg model warm-up happens when the model is missing from `U2NET_HOME`.
+- with the Fly volume mounted, warm-up should not repeat on every restart.
+- container and Fly checks are configured with startup grace periods to tolerate slower cold starts.
 - `/health` indicates app liveness; `/health/rembg` indicates dependency readiness.
 
 ## Useful Commands
