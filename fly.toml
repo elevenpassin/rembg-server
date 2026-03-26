@@ -13,6 +13,7 @@ primary_region = 'fra'
 [env]
   REMBG_URL = 'http://localhost:7000'
   U2NET_HOME = '/data/rembg'
+  BOOTSTRAP_REMBG = '1'
 
 [http_service]
   internal_port = 3000

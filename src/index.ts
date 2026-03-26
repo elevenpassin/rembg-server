@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import busboy from "busboy";
+import { spawn } from "node:child_process";
 import express from "express";
 import z from "zod";
 import { db } from "./db.ts";
@@ -13,6 +14,9 @@ import { connectOnce } from "./utils/network.ts";
 const MAX_UPLOAD_IMAGES = 7;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 const REMBG_URL = process.env.REMBG_URL ?? "http://localhost:7000";
+const BOOTSTRAP_REMBG = process.env.BOOTSTRAP_REMBG === "1";
+const BOOTSTRAP_REMBG_MODEL = process.env.REMBG_MODEL ?? "u2net";
+const BOOTSTRAP_REMBG_WAIT_MS = Number.parseInt(process.env.REMBG_BOOTSTRAP_WAIT_MS ?? "", 10) || 120_000;
 const DEFAULT_PORT = 3000;
 const PORT = Number.parseInt(process.env.PORT ?? "", 10) || DEFAULT_PORT;
 
@@ -25,6 +29,84 @@ const ALLOWED_IMAGE_MIMES = new Set([
 	"image/x-icon",
 	"image/bmp",
 ]);
+
+function parseRembgHostPort(rembgUrl: string): { host: string; port: number } {
+	const u = new URL(rembgUrl);
+	// Avoid IPv6 localhost edge cases by forcing loopback v4.
+	const host = u.hostname === "localhost" ? "127.0.0.1" : u.hostname;
+	const port = Number(u.port) || 7000;
+	return { host, port };
+}
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForRembg(host: string, port: number): Promise<void> {
+	const deadline = Date.now() + BOOTSTRAP_REMBG_WAIT_MS;
+	let lastErr: unknown = null;
+	while (Date.now() < deadline) {
+		try {
+			await connectOnce(host, port);
+			return;
+		} catch (err) {
+			lastErr = err;
+			await delay(1000);
+		}
+	}
+	const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+	throw new Error(`Timed out waiting for rembg at ${host}:${port}. Last error: ${msg}`);
+}
+
+function runRembgOnce(args: string[]): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const proc = spawn("rembg", args, {
+			stdio: "inherit",
+		});
+		proc.on("error", reject);
+		proc.on("exit", (code) => {
+			if (code === 0) resolve();
+			else reject(new Error(`rembg ${args.join(" ")} exited with code ${code}`));
+		});
+	});
+}
+
+async function maybeBootstrapRembg(): Promise<void> {
+	const { host, port } = parseRembgHostPort(REMBG_URL);
+
+	// Fast path: rembg is already reachable.
+	try {
+		await connectOnce(host, port);
+		return;
+	} catch (err) {
+		// fall through to bootstrap logic
+		if (!BOOTSTRAP_REMBG) {
+			console.warn(
+				`[startup] rembg not reachable at ${host}:${port} and BOOTSTRAP_REMBG != 1; continuing anyway.`,
+			);
+			return;
+		}
+		console.warn(`[startup] rembg not reachable; bootstrapping (this may take a while)...`, err);
+	}
+
+	await runRembgOnce(["d", BOOTSTRAP_REMBG_MODEL]);
+
+	const rembgServer = spawn(
+		"rembg",
+		["s", "--host", "0.0.0.0", "--port", String(port)],
+		{
+			stdio: "inherit",
+		},
+	);
+
+	// If rembg exits immediately, fail fast so Fly marks the machine unhealthy.
+	rembgServer.on("exit", (code) => {
+		if (code !== 0) console.error(`[startup] rembg server exited with code ${code}`);
+	});
+
+	await waitForRembg(host, port);
+	console.log(`[startup] rembg is reachable at ${host}:${port}`);
+}
 
 async function removeBackground(
 	buffer: Buffer,
@@ -205,5 +287,11 @@ const isMainModule =
 	path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMainModule) {
-	app.listen(PORT, "0.0.0.0");
+	(async () => {
+		await maybeBootstrapRembg();
+		app.listen(PORT, "0.0.0.0");
+	})().catch((err) => {
+		console.error("[startup] failed to start app", err);
+		process.exit(1);
+	});
 }
