@@ -4,7 +4,6 @@ TypeScript + Express server that accepts image uploads, removes backgrounds thro
 
 The project also includes:
 - a static browser test page in `public/`,
-- a small tRPC API backed by PostgreSQL + Prisma,
 - unit and e2e tests with Vitest + Supertest,
 - containerized local deployment with Docker Compose + Caddy,
 - Fly.io deployment config for production.
@@ -17,15 +16,12 @@ The project also includes:
 - Streams back one `multipart/mixed` response containing PNG attachments.
 - Exposes health probes at `/health` and `/health/rembg`.
 - Serves static files from `public/`.
-- Exposes tRPC procedures at `/trpc`.
 
 ## Stack
 
 - Runtime: Node.js (ESM) + TypeScript (`ts-node`)
 - HTTP framework: Express 5
 - Upload parsing: Busboy
-- API/RPC: tRPC (`@trpc/server` with Express adapter)
-- DB: Prisma + PostgreSQL (`pg`, `@prisma/adapter-pg`)
 - Image processing service: `rembg` over HTTP
 - Tests: Vitest + Supertest
 - Local edge proxy/TLS: Caddy
@@ -33,15 +29,12 @@ The project also includes:
 
 ## Project Layout
 
-- `src/index.ts` - Express app wiring, routes, upload pipeline, tRPC mount, static serving
-- `src/trpc.ts` - tRPC initialization helpers
-- `src/db.ts` - Prisma client + PG adapter
+- `src/index.ts` - Express app wiring, routes, upload pipeline, static serving
 - `src/utils/files.ts` - output filename helper
 - `src/utils/http.ts` - JSON response helper
 - `src/utils/network.ts` - TCP reachability check helper
 - `src/**/*.unit.test.ts` - unit tests
 - `src/**/*.e2e.test.ts` - API/e2e tests
-- `prisma/schema.prisma` - `User` / `Bookmark` models
 - `public/` - static browser smoke/load test UI
 - `compose.yml` - local Caddy + app + rembg stack
 - `Dockerfile` - multi-stage local/prod images
@@ -95,34 +88,12 @@ Implementation notes:
   - `200 {"status":"ok"}` when rembg is reachable
   - `503 {"status":"unavailable","service":"rembg"}` when unreachable
 
-## tRPC Endpoints
-
-Mounted at `/trpc` via Express middleware.
-
-Current procedures:
-- `userList` - list all users
-- `userById` - fetch a user by integer ID
-
 ## Static Assets
 
 `express.static` serves files from `public/` (for example `/`, `/script.js`, `/styles.css`).
 
-## Database
-
-Prisma models:
-- `User` (`id`, `email`, optional `name`, relation to `Bookmark`)
-- `Bookmark` (`id`, `link`, optional `userId`)
-
-Client generation:
-- Prisma client output path: `src/generated/prisma`
-
-Runtime DB bootstrap:
-- `src/db.ts` builds a `pg` pool from `DATABASE_URL`
-- Prisma uses `PrismaPg` adapter
-
 ## Environment Variables
 
-- `DATABASE_URL` (required for Prisma/Postgres access)
 - `REMBG_URL` (optional; default `http://localhost:7000`)
 
 See `.env.example` for template values and notes.
@@ -131,7 +102,6 @@ See `.env.example` for template values and notes.
 
 Prerequisites:
 - Node.js + pnpm
-- PostgreSQL instance reachable by `DATABASE_URL`
 - rembg HTTP service reachable by `REMBG_URL` (default `http://localhost:7000`)
 
 Setup:
@@ -139,7 +109,6 @@ Setup:
 ```bash
 pnpm install
 cp .env.example .env
-pnpm run prisma:generate
 ```
 
 Run:
@@ -180,7 +149,7 @@ Current coverage in repo includes:
 - `rembg` (`danielgatis/rembg:latest`) on internal `7000`
 
 Caddy routes:
-- `/trpc/*`, `/upload`, `/health`, `/health/rembg` -> `app:3000`
+- `/upload`, `/health`, `/health/rembg` -> `app:3000`
 - all other paths -> static files from `/srv` (`./public` mount)
 
 Run:
@@ -222,7 +191,7 @@ Compose-specific behavior:
 - `REMBG_URL=http://localhost:7000`
 - `U2NET_HOME=/data/rembg`
 - request concurrency limits: soft `20`, hard `25`
-- VM memory: `1gb` / `1024 MB`
+- VM: `performance` CPU, 2 vCPUs, `4gb` / `4096 MB` memory
 
 Rembg model volume:
 - `rembg_data` volume is mounted at `/data`
@@ -234,14 +203,12 @@ Rembg model volume:
   ```
 
 Health checks configured:
-- HTTP check on `/health`
-- TCP check on port `7000` (rembg)
+- HTTP check on `/health` (grace period `15m` for initial model download)
 
 Typical deploy flow:
 
 ```bash
 fly auth login
-fly secrets set DATABASE_URL="postgres://..."
 fly deploy
 ```
 
@@ -260,8 +227,7 @@ curl -s https://<your-app>.fly.dev/health/rembg
 - upload up to 7 images,
 - call `/upload`,
 - parse multipart response client-side,
-- preview + download generated PNGs,
-- call `/trpc/userList`.
+- preview + download generated PNGs.
 
 ## Operational Notes
 
@@ -275,8 +241,6 @@ curl -s https://<your-app>.fly.dev/health/rembg
 
 ```bash
 pnpm run serve
-pnpm run prisma:generate
-pnpm run prisma:studio
 pnpm run check
 pnpm run typecheck
 pnpm run test
