@@ -1,8 +1,5 @@
 # http://localhost and https://localhost (Caddy uses its local CA for HTTPS; accept browser prompt once)
 http://localhost, https://localhost {
-	handle_path /trpc/* {
-		reverse_proxy app:3000
-	}
 	handle /upload {
 		reverse_proxy app:3000
 	}

@@ -10,9 +10,6 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN npm install -g pnpm && pnpm install --frozen-lockfile
 
 COPY src ./src
-COPY prisma ./prisma
-
-RUN pnpm run prisma:generate
 
 
 FROM node:22-bookworm-slim AS runner-base
@@ -29,7 +26,6 @@ WORKDIR /app
 COPY --from=base /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/src ./src
-COPY --from=base /app/prisma ./prisma
 COPY public ./public
 
 ENV REMBG_URL=http://localhost:7000
@@ -41,6 +37,5 @@ FROM base AS runner
 WORKDIR /app
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/src ./src
-COPY --from=base /app/prisma ./prisma
 EXPOSE 3000
 CMD ["pnpm", "run", "serve"]

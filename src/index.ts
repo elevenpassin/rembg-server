@@ -1,12 +1,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import busboy from "busboy";
 import { spawn } from "node:child_process";
 import express from "express";
-import z from "zod";
-import { db } from "./db.ts";
-import { publicProcedure, router } from "./trpc.ts";
 import { outputFilename } from "./utils/files.ts";
 import { sendJson } from "./utils/http.ts";
 import { connectOnce } from "./utils/network.ts";
@@ -242,26 +238,6 @@ function handleUpload(req: express.Request, res: express.Response): void {
 	req.pipe(bb as unknown as NodeJS.WritableStream);
 }
 
-const appRouter = router({
-	userList: publicProcedure.query(async () => {
-		const users = await db.user.findMany();
-		return users;
-	}),
-	userById: publicProcedure.input(z.int()).query(async (opts) => {
-		const { input } = opts;
-
-		const user = await db.user.findUnique({
-			where: {
-				id: input,
-			},
-		});
-
-		return user;
-	}),
-});
-
-export type AppRouter = typeof appRouter;
-
 export function createApp(): express.Express {
 	const app = express();
 
@@ -282,13 +258,6 @@ export function createApp(): express.Express {
 			sendJson(res, 503, { status: "unavailable", service: "rembg" });
 		}
 	});
-
-	app.use(
-		"/trpc",
-		createExpressMiddleware({
-			router: appRouter,
-		}),
-	);
 
 	app.use(express.static(path.join(process.cwd(), "public")));
 
